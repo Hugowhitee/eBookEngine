@@ -1,29 +1,23 @@
-# Architecture and engineering decisions
+# Architecture
 
-**Status:** candidate design; dependency/engine and Windows performance are **not yet verified**. Confirm with fixtures, real Windows GUI tests and a packaged build rather than treating this document as proof.
+## State and ownership
 
-## Boundaries and state
-- **SourceDocument**: immutable bytes, detected type, verified metadata and provenance. ZIP/XML/HTML/PDF inputs are untrusted: bound expansion sizes, local paths, images, scripts, external references and parser execution.
-- **StructuredDocument**: source-linked sections/pages/blocks, figures, tables, text, order, captions and confidence/provenance.
-- **ChangeSet**: typed machine/manual proposals; accept/revert/edit and undo/redo, keeping user decisions independent from the extraction engine.
-- **Candidate**: regenerated and validated bytes, corresponding to result preview; never pretend an unrendered partial proposal is export-ready.
-- **CleanMaster**: nonpersonal repairs only. Optional personal/language edition is a separate versioned derivative with reversible overlay/sidecar, never an implicit default.
+`EpubSource` loads immutable ZIP bytes, validates OCF, manifest/spine, media and path safety. `ChangeSession` holds typed proposals and snapshot-based Undo/Redo, reconstructing every candidate from the original. `core.atomic_save` protects original files and writes atomically. PDFium renders source pages. `pdf_engine.searchable_pdf` layers invisible selectable Tesseract text on missing-text PDF pages without repainting source page graphics, then reopens and verifies the output. `conversion` builds reflowable EPUB from structured Docling HTML while carrying a visual page-reference appendix. `local_ai` proposes description text only on explicit request. Its output is never silently applied.
 
-## Application shell and viewer
-Use a straightforward native Windows UI (provisional: Python 3.12+ with PySide6/Qt) distributed as self-contained installer/portable build, not a script and not a background browser server. PDF pages: PDFium/pypdfium2 candidate, lazy rendering, search and coordinates. EPUB pages: an embedded isolated web viewer/EPUB renderer, no document-origin scripts or uncontrolled remote network access. Compare mode links source regions/sections to candidate, never falsely promises exact page-to-page pairing for reflow.
+## Windows UI
 
-Workers must avoid freezing UI. Pipeline is queued → inspect → extract/OCR (if needed) → propose repair → validate → review → export; exceptions/cancellation are recoverable. Progress may display genuine stages and page counts; never fabricated percentages or extra main windows.
+The actual implementation uses Python 3.12 `tkinter/ttk` for native system buttons and fewer moving parts; the earlier PySide6 choice was provisional. One document-first main window, split source/result viewer, context-specific output selector, TOC/page navigation, editable EPUB cover/metadata, change toggle and Undo/Redo, worker progress/cancel, Save as. EPUB text preview is sanitized and does **not** claim identical pagination/rendering to a Kobo/Calibre renderer. Windows onedir distribution bundles Python, PDFium and Tesseract. No forced login or cloud conversion.
 
-## Engines (investigate, don't lock in blindly)
-- **Fast path:** EPUB ZIP/OCF, XHTML/XML, CSS, NCX/nav and metadata inspection; safe transformations with original-content checks. For digital PDF, prefer faithful page preservation.
-- **Advanced PDF/OCR/layout:** local document extraction pipeline with figures, reading order, tables and captions. Benchmark Docling and Datalab Marker (including their Windows/CPU requirements, accuracy, model size, speed, redistribution constraints) against the **same real test fixtures**. Choose one owner in the product, not multiple identical engines bundled by default.
-- **Local AI:** embedded optional managed inference backend, compatible pinned model, in-app first-use setup/storage checks and offline reuse. Confirm whether Intel integrated GPU/CPU meets acceptable speed before advertising acceleration. AI should propose bounded changes; never silently rewrite an author's content or fabricate missing OCR.
-- **Output builders:** safe PDF/searchable-layer processing and structured reflowable EPUB assembler, links/media/TOC/cover/metadata, validation. Do not rely on opaque one-pass conversion when fidelity cannot be measured.
+## Optional local engines
 
-## Validation and safety
-Use format validators plus original-vs-result text/image/page/asset completeness checks, anchors, manifest/spine, cover, metadata, reader/reflow/heading check, image and figure association; validate exact exported bytes. Atomic save with crash-safe temp files and no source overwrite. Local files remain local by default; model downloads are explicit.
+- OCR: Tesseract bundled with the manual Windows package. It adds an invisible text overlay only for scanned pages. A real unsupported scan is rejected rather than returning invented text.
+- Complex PDF: an in-app setup uses checksum-verified `uv` to create a dedicated Python+Docling environment with predownloaded layout/OCR/table models, without requiring user-entered shell commands. This is a large 12+ GB optional operation and is unverified on Windows. Docling runs out of process; extracted figures can be embedded while all original page renders remain accessible for visual validation.
+- Text AI: optional managed Windows CPU llama.cpp binary and checksum-verified Qwen2.5-1.5B GGUF. A bounded local subprocess returns a proposal, not canonical text. No VLM figure-editing is claimed. Models require explicit user download and internet only for that setup.
 
-## External software and rights
-eBookEngine is a distinct independent product with its own code, data model, UI and branding. Researching how another app behaves or adopting noncopyrightable workflows does **not** make this a branded fork. Evaluate code/dependency reuse when it genuinely saves engineering effort; prefer compatible libraries and honor their actual license/redistribution requirements in third-party notices or distribution material as applicable. Never strip legally required notices or imply copied code is independent. No upstream-product names or promotional credits in ordinary UX/marketing unless actually required. Don't bulk-copy application code to avoid due diligence. Verify actual terms for Qt, PDF renderers, OCR models and weights before packaging.
+## Security/quality
 
-No automatic GitHub Actions costs, cloud dependence or separate admin consoles.
+Documents never run embedded JavaScript or user macros. EPUB input is size-capped and path-normalized, rejects symlinks/traversal/ambiguous duplicate items, and never resolves external entities. Source content remains byte-preserved except explicit metadata/CSS edits; EPUB output verifies the full original spine/manifest and digests. PDF OCR result reopens with unchanged page count, selectable text layer and rendering-comparison tests. No DRM bypass. External library licenses and model weights are evaluated before shipping; there is no third-party branding in normal UI.
+
+## Current risks
+
+Real Windows packaging, binary redistribution notices, Tesseract DLL/tessdata inclusion, Docling model setup and offline reuse, local-LLM inference, cancellation of heavy child processes, complex PDF table/figure fidelity, manual correction of OCR text/reading order, and accurate rich EPUB CSS rendering are not yet release-proven. Do not elevate the M1 functional prototype to complete product status.

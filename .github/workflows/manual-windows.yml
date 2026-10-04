@@ -1,0 +1,55 @@
+name: Package Windows (manual)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - name: Source
+        uses: actions/checkout@v4
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Python dependencies
+        run: python -m pip install -e ".[dev]"
+      - name: Bundle OCR runtime
+        shell: pwsh
+        run: |
+          choco install tesseract -y --no-progress
+          if (!(Test-Path 'C:\Program Files\Tesseract-OCR\tesseract.exe')) { throw 'Tesseract binary missing' }
+          if (!(Test-Path 'C:\Program Files\Tesseract-OCR\tessdata\eng.traineddata')) { throw 'English OCR data missing' }
+      - name: Core and OCR tests
+        run: python -m pytest -q
+      - name: Build portable native application
+        shell: pwsh
+        run: |
+          pyinstaller --clean --noconfirm --windowed --onedir --name eBookEngine `
+            --collect-all pypdfium2 `
+            --add-data 'ebookengine/worker_docling.py;ebookengine' `
+            --add-data 'C:\Program Files\Tesseract-OCR;tesseract' `
+            launcher.py
+          if (!(Test-Path 'dist\eBookEngine\eBookEngine.exe')) { throw 'No runnable application' }
+      - name: Cold-start executable smoke
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath 'dist\eBookEngine\eBookEngine.exe' -PassThru
+          Start-Sleep -Seconds 5
+          if ($p.HasExited) { throw "Application exited at startup: $($p.ExitCode)" }
+          Stop-Process -Id $p.Id
+      - name: Package files
+        shell: pwsh
+        run: Compress-Archive -Path 'dist\eBookEngine\*' -DestinationPath 'eBookEngine-Windows-x64.zip' -Force
+      - name: Upload portable app
+        uses: actions/upload-artifact@v4
+        with:
+          name: eBookEngine-Windows-x64
+          path: eBookEngine-Windows-x64.zip
+          retention-days: 14

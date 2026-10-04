@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ebookengine"
+version = "0.1.0"
+description = "A private, local-first EPUB/PDF improvement workspace"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "pypdf>=5.9,<7",
+  "pypdfium2>=5.8,<6",
+  "Pillow>=11,<13",
+  "lxml>=5.4,<7",
+  "pytesseract>=0.3.13,<0.4",
+  "reportlab>=4.4,<5",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10", "pyinstaller>=6,<7"]
+
+[project.scripts]
+ebookengine = "ebookengine.gui:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ebookengine*"]
