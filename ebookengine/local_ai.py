@@ -5,10 +5,8 @@ No inference/remote actions occur unless the user explicitly requests them.
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 from pathlib import Path
-import re
 import shutil
 import subprocess
 import sys
@@ -23,6 +21,14 @@ MODEL_URL = ("https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/"
              "a615a81362316d7b9f5a7a9c4313adfdf9b54588/"+MODEL_FILE)
 MODEL_SHA256 = "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e"
 MODEL_EXPECTED_BYTES = 1_200_000_000
+
+# A tagged official release containing an actual Windows CPU archive, not
+# GitHub's latest *named release* (v0.5.0, which contains no Windows binary).
+LLAMA_RELEASE = 'b11380'
+LLAMA_URL = ('https://github.com/ggml-org/llama.cpp/releases/download/'
+             'b11380/llama-b11380-bin-win-cpu-x64.zip')
+LLAMA_SHA256 = '14745434896a9ffc7acc21f0c11ac95eb7c3d33589def679c7ff1aca3a1dbd4c'
+
 
 
 def application_data() -> Path:
@@ -84,28 +90,13 @@ def install_model(progress=None,cancelled=None):
 
 
 def install_engine(progress=None,cancelled=None):
-    """Install official upstream Windows CPU runtime, isolated in appdata.
-
-    Stable release discovery via verified TLS GitHub API, no scripts or shell.
-    """
+    """Install an exact verified official Windows CPU release, isolated in AppData."""
     if os.name!='nt':
         raise DocumentError('Deze automatische llama-installatie is bedoeld voor Windows x64')
-    url='https://api.github.com/repos/ggml-org/llama.cpp/releases/latest'
-    req=urllib.request.Request(url,headers={"User-Agent":"eBookEngine/0.1","Accept":"application/vnd.github+json"})
-    with urllib.request.urlopen(req,timeout=20) as response:
-        release=json.load(response)
-    assets=release.get('assets',[])
-    matches=[a for a in assets if re.search(r'win-cpu-x64\.zip$',a['name'],re.I) and 'avx512' not in a['name'].lower()]
-    if len(matches)!=1:
-        raise DocumentError('Geen eenduidige officiële Windows CPU-versie gevonden')
-    asset=matches[0]
-    digest=asset.get('digest','')
-    if not digest.startswith('sha256:'):
-        raise DocumentError('Officiële runtime heeft geen verifieerbare checksum')
     target=application_data()/"downloads"/"llama-win.zip"
-    _download(asset['browser_download_url'],target,450*1024*1024,progress,cancelled)
+    _download(LLAMA_URL,target,450*1024*1024,progress,cancelled)
     with target.open('rb') as f:
-        if hashlib.file_digest(f,'sha256').hexdigest()!=digest[7:]:
+        if hashlib.file_digest(f,'sha256').hexdigest()!=LLAMA_SHA256:
             target.unlink(missing_ok=True)
             raise DocumentError('Runtimechecksum komt niet overeen')
     destination=engine_path().parent
