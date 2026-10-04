@@ -495,7 +495,7 @@ class App(tk.Tk):
                 from zipfile import ZipFile
                 with ZipFile(BytesIO(self.candidate)) as z:
                     if z.testzip() is not None:raise DocumentError('Invalid EPUB archive')
-                if self.kind=='EPUB':self.source.verify(self.candidate)
+                if self.kind=='EPUB':self.session.verify_candidate(self.candidate)
             else:
                 import pypdfium2 as pdfium
                 d=pdfium.PdfDocument(self.candidate)

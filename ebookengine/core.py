@@ -46,8 +46,26 @@ def _safe_path(name: str) -> str:
 
 
 def _join(root: str, href: str):
-    path = unquote(urlsplit(href).path)
-    return _safe_path(str(PurePosixPath(root) / path))
+    """Resolve EPUB relative paths without permitting archive-root traversal.
+
+    Legitimate EPUB packages can reference ../Images from a Text folder.
+    Validate the normalized absolute-in-archive target, not raw .. tokens.
+    """
+    value = unquote(urlsplit(href).path).replace("\\", "/")
+    if (not value or value.startswith("/") or "\x00" in value or
+            re.match(r"^[A-Za-z]:", value)):
+        raise DocumentError(f"Onveilig EPUB-pad: {href}")
+    parts = [part for part in root.split("/") if part] if root else []
+    for part in value.split("/"):
+        if part in ("", "."):
+            continue
+        if part == "..":
+            if not parts:
+                raise DocumentError(f"EPUB-pad verlaat het archief: {href}")
+            parts.pop()
+        else:
+            parts.append(part)
+    return _safe_path("/".join(parts))
 
 
 def sniff(path: str | Path) -> str:
@@ -237,7 +255,10 @@ class EpubSource:
         return PurePosixPath(path).name
 
     def _contents_fingerprint(self, z):
-        return {p: hashlib.sha256(z.read(p)).digest() for p in self.paths.values()}
+        # Full-archive invariance: includes extra styles, inline notes and
+        # non-manifest payloads; only explicitly edited assets may differ.
+        return {p: hashlib.sha256(z.read(p)).digest() for p in z.namelist()
+                if not p.endswith('/')}
 
     @property
     def info(self):
@@ -416,8 +437,10 @@ class ChangeSession:
         self._redo: list[dict[str, Change]] = []
         self.extra_css = False
         self.candidate: bytes = source.raw
+        self._candidate_digest: bytes | None = None
 
     def _snapshot(self):
+        self._candidate_digest = None
         self._history.append(self.changes.copy())
         self._redo.clear()
 
@@ -442,18 +465,38 @@ class ChangeSession:
 
     def undo(self):
         if self._history:
+            self._candidate_digest = None
             self._redo.append(self.changes.copy())
             self.changes = self._history.pop()
 
     def redo(self):
         if self._redo:
+            self._candidate_digest = None
             self._history.append(self.changes.copy())
             self.changes = self._redo.pop()
 
     def build(self):
         changes = {c.field:c.after for c in self.changes.values() if c.enabled}
+        self._candidate_digest = None
         self.candidate = self.source.create(changes,extra_css=self.extra_css)
+        self._candidate_digest = hashlib.sha256(self.candidate).digest()
         return self.candidate
+
+    def verify_candidate(self, candidate: bytes):
+        """Verify the exact candidate produced from the current staged edits.
+
+        A metadata-only edit necessarily changes the OPF. Export must not
+        reject legitimate edits, or allow an unrelated modified EPUB to slip
+        past the complete source-content comparison.
+        """
+        if self._candidate_digest is None or self._candidate_digest != hashlib.sha256(candidate).digest():
+            raise DocumentError("Kandidaat is verouderd of gewijzigd: maak opnieuw een preview")
+        allowed = {self.source.opf_path: b''} if any(c.enabled for c in self.changes.values()) else {}
+        if self.extra_css:
+            for ident,item in self.source.items.items():
+                if item.get('media-type') == 'text/css':
+                    allowed[self.source.paths[ident]] = b''
+        return self.source.verify(candidate, allowed_modified=allowed)
 
 
 def atomic_save(target: str | Path, content: bytes, *, original: str | Path):

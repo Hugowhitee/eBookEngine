@@ -1,4 +1,4 @@
-from ebookengine.gui import main
+from ebookengine.smoke import dispatch
 
 if __name__ == '__main__':
-    main()
+    dispatch()

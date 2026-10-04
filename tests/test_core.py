@@ -68,3 +68,75 @@ def test_no_changes_consistent(tmp_path):
     session=ChangeSession(source)
     out=session.build()
     assert EpubSource(tmp_path.joinpath('copy.epub').write_bytes(out) and tmp_path/'copy.epub').info.title=='Test Title'
+
+
+def test_epub_nested_relative_resources_keep_full_content(tmp_path):
+    """Valid ../ references inside the archive must not be rejected."""
+    src=fixture_book(tmp_path)
+    path=tmp_path/'nested.epub'
+    nested=OPF.replace(b'href="chapter1.xhtml"',b'href="Text/chapter1.xhtml"')              .replace(b'href="chapter2.xhtml"',b'href="Text/chapter2.xhtml"')              .replace(b'href="cover.jpg"',b'href="Images/cover.jpg"')              .replace(b'href="proper.jpg"',b'href="Images/proper.jpg"')
+    nested=nested.replace(b'Images/cover.jpg',b'Text/../Images/cover.jpg')
+    with ZipFile(src) as z, ZipFile(path,'w') as out:
+        for name in z.namelist():
+            data=z.read(name)
+            if name=='content.opf':data=nested
+            elif name.startswith('chapter'):name='Text/'+name
+            elif name.endswith('.jpg'):name='Images/'+name
+            out.writestr(name,data,compress_type=ZIP_STORED if name=='mimetype' else ZIP_DEFLATED)
+        out.writestr('extra-not-listed.txt',b'Unmanifested publisher note')
+    book=EpubSource(path)
+    assert book.paths['placeholder']=='Images/cover.jpg'
+    session=ChangeSession(book)
+    session.assign('description','Added description')
+    result=session.build()
+    with ZipFile(BytesIO(result)) as z,ZipFile(path) as original:
+        for name in original.namelist():
+            if name !='content.opf':assert z.read(name)==original.read(name)
+    # Outside the EPUB root remains invalid even when the first path is nested.
+    assert book.read_section(0)
+
+
+def test_relative_path_escape_is_rejected():
+    from ebookengine.core import _join
+    assert _join('OEBPS/Text','../Images/picture.jpg') == 'OEBPS/Images/picture.jpg'
+    with pytest.raises(DocumentError):_join('OEBPS/Text','../../../private.txt')
+    with pytest.raises(DocumentError):_join('OEBPS/Text','%2Fetc/passwd')
+
+
+def test_epub3_cover_properties_and_metadata_timestamp(tmp_path):
+    from lxml import etree
+    source_path=fixture_book(tmp_path)
+    target=tmp_path/'epub3.epub'
+    version3=OPF.replace(b'version="2.0"',b'version="3.0"')
+    version3=version3.replace(b'id="placeholder" href=',b'id="placeholder" properties="cover-image" href=')
+    with ZipFile(source_path) as z, ZipFile(target,'w') as out:
+        for name in z.namelist():
+            payload=version3 if name=='content.opf' else z.read(name)
+            out.writestr(name,payload,compress_type=ZIP_STORED if name=='mimetype' else ZIP_DEFLATED)
+    book=EpubSource(target)
+    session=ChangeSession(book)
+    session.assign('cover','proper')
+    result=session.build()
+    with ZipFile(BytesIO(result)) as z:
+        tree=etree.fromstring(z.read('content.opf'))
+        ns={'opf':'http://www.idpf.org/2007/opf'}
+        fields={e.get('id'):(e.get('properties') or '') for e in tree.xpath('.//opf:item',namespaces=ns)}
+        assert 'cover-image' in fields['proper'].split()
+        assert 'cover-image' not in fields['placeholder'].split()
+        assert len(tree.xpath('.//opf:meta[@property="dcterms:modified"]',namespaces=ns))==1
+    assert session.verify_candidate(result)
+
+
+def test_export_verifies_exact_built_candidate_and_rejects_stale_edit(tmp_path):
+    src=EpubSource(fixture_book(tmp_path))
+    changes=ChangeSession(src)
+    changes.assign('description','Reviewed by reader')
+    built=changes.build()
+    assert changes.verify_candidate(built) is True
+    with pytest.raises(DocumentError):changes.verify_candidate(built[:-10]+b'1234567890')
+    changes.assign('title','New book title')
+    with pytest.raises(DocumentError):changes.verify_candidate(built)
+    rebuilt=changes.build()
+    assert changes.verify_candidate(rebuilt)
+    changes.undo()
+    with pytest.raises(DocumentError):changes.verify_candidate(rebuilt)

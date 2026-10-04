@@ -1,2 +1,4 @@
-from .gui import main
-if __name__=='__main__':main()
+from .smoke import dispatch
+
+if __name__ == '__main__':
+    dispatch()

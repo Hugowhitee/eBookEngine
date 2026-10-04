@@ -44,6 +44,16 @@ jobs:
           Start-Sleep -Seconds 5
           if ($p.HasExited) { throw "Application exited at startup: $($p.ExitCode)" }
           Stop-Process -Id $p.Id
+      - name: Bundled EPUB/PDF/OCR end-to-end self-test
+        shell: pwsh
+        run: |
+          $proof = Join-Path $pwd 'release-smoke.json'
+          $p = Start-Process -FilePath 'dist\eBookEngine\eBookEngine.exe' -ArgumentList @('--self-test', $proof) -PassThru -Wait
+          if (!(Test-Path $proof)) { throw 'Release generated no validation report' }
+          $report = Get-Content $proof -Raw | ConvertFrom-Json
+          if ($p.ExitCode -ne 0 -or $report.status -ne 'pass' -or !$report.epub -or !$report.pdf -or !$report.ocr) {
+            throw ('Bundled end-to-end check failed: ' + (Get-Content $proof -Raw))
+          }
       - name: Package files
         shell: pwsh
         run: Compress-Archive -Path 'dist\eBookEngine\*' -DestinationPath 'eBookEngine-Windows-x64.zip' -Force
