@@ -1,0 +1,30 @@
+# Development and build
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+build/
+dist/
+*.spec
+*.egg-info/
+*.log
+
+# Models / untrusted test documents / outputs
+models/
+downloads/
+test-documents/private/
+artifacts/
+tmp/
+.cache/
+*.pdf
+*.epub
+*.kepub.epub
+
+# Editors and OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
