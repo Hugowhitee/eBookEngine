@@ -35,6 +35,7 @@ class BookJob:
     findings: list[dict] = field(default_factory=list)
     workflow: str = ""
     edits: dict[str, str] = field(default_factory=dict)
+    approved_proposals: list[str] = field(default_factory=list)
     libron_zip: str | None = None
     output: str | None = None
     error: str | None = None
@@ -136,7 +137,8 @@ class BatchQueue:
         return job
 
     def approve(self, job_id: str, *, edits: dict[str, str] | None = None,
-                libron_zip: str | Path | None = None) -> BookJob:
+                libron_zip: str | Path | None = None,
+                approved_proposals: list[str] | None = None) -> BookJob:
         job = self.get(job_id)
         if job.status != "needs_review":
             raise DocumentError("Inspect and review book before approving")
@@ -145,7 +147,14 @@ class BatchQueue:
         changes = dict(edits or {})
         if set(changes) - METADATA or any(not isinstance(v, str) for v in changes.values()):
             raise DocumentError("Unsupported EPUB metadata edit")
+        proposed = list(approved_proposals or [])
+        if len(proposed) != len(set(proposed)):
+            raise DocumentError("Duplicate proposal approval")
+        available = set(ChangeSession(EpubSource(job.source)).changes)
+        if set(proposed) - available:
+            raise DocumentError("Unknown proposed changes; reinspect this book")
         job.edits = changes
+        job.approved_proposals = proposed
         job.libron_zip = str(Path(libron_zip).expanduser().resolve(strict=True)) if libron_zip else None
         job.status = "approved"
         job.error = None
@@ -170,6 +179,7 @@ class BatchQueue:
         job.findings = []
         job.workflow = ""
         job.edits = {}
+        job.approved_proposals = []
         job.libron_zip = None
         job.output = None
         self._save()
@@ -198,6 +208,11 @@ class BatchQueue:
             if sha256(source.raw).hexdigest() != job.source_hash:
                 raise DocumentError("Source changed while loading; inspect again")
             session = ChangeSession(source)
+            if set(job.approved_proposals) - set(session.changes):
+                raise DocumentError("Approved proposal no longer matches the source")
+            for key in tuple(session.changes):
+                if key not in job.approved_proposals:
+                    session.toggle(key)
             for key, value in job.edits.items():
                 session.assign(key, value)
             if job.libron_zip:
