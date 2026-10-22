@@ -14,15 +14,21 @@ This is a requirement map, not a passing score. The current Drive EPUB cleanup s
 | --- | --- | --- |
 | Detect EPUB/KEPUB, fixed/roll/reflow, encryption and structural risks | Partial read-only preflight, new and untested | Mixed-layout fixtures and independent validation |
 | Preserve vs reconstruct vs mixed strategy | Flags evidence; cannot yet reconstruct existing EPUBs | Real poorly converted books with original-text comparisons |
-| Navigation/TOC/footnotes/spine repair | Read and protect spine, no automatic repair | Working internal links, NCX/nav and note callbacks |
+| Navigation/TOC/footnotes/spine repair | Partial read-only XHTML/NCX broken-link, fragment and duplicate-ID audit; repair not yet implemented | Working cross-book links, NCX/nav repair and reader checks |
 | CSS/reflow and typography | Narrow CSS repair; opt-in Libron backend in draft | E-reader render, dark mode, all font styles, glyph coverage |
-| Watermark/OCR/conversion artifact removal | Not implemented in existing EPUB cleanup | Only verified non-book text removed |
+| Watermark/OCR/conversion artifact removal | Source-preserving removal of clearly unreferenced OS ZIP debris only; watermarks/OCR/content cleanup not implemented | Proven author-content preservation and explicit repair scope |
 | Metadata, privacy and covers | Partial metadata editing and cover proposals | Real bookstore/Calibre checks; source provenance |
-| EPUB3/ZIP/link/font/reader validation | Partial self-check; no EPUBCheck integration | Independent EPUBCheck and content preservation |
+| EPUB3/ZIP/link/font/reader validation | Partial self-check and conservative offline internal-reference audit; no EPUBCheck integration | Independent EPUBCheck and content preservation |
 | Kobo master/KEPUB decision | Not implemented | Master first; derivative only if requested |
 | Several books in a queue | Persisted EPUB-only backend; no GUI, no PDF batch | restart/retry/cancel, bounded memory, batch UI QA |
 
 Do not call a book clean merely because it passed archive inspection or its metadata changed.
+
+## Current development-branch evidence (not a release)
+
+- Proposed OS debris removal is integrated with ChangeSession, undo/redo and selective archive verification. Retained files are compared byte-for-byte, with bounded streaming in the new cleanup layer; this does not fix the larger EpubSource whole-book memory model.
+- Preflight checks broken local links and anchors, duplicate XHTML IDs and unverified XML bases, without rewriting reader navigation. It distinguishes standard IDPF font obfuscation from unknown encryption and refuses edits to signed EPUBs.
+- Regression tests were added for these cases, but a full Python test run, EPUBCheck, a real Libron ZIP, Windows packaging and reader rendering have **not** been executed in the current development session. The work remains DRAFT.
 
 ## Required gates still open
 
