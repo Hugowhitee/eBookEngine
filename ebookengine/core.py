@@ -563,9 +563,10 @@ class ChangeSession:
         return self.source.verify(candidate, allowed_modified=allowed, allowed_removed=removed)
 
 
-def atomic_save(target: str | Path, content: bytes, *, original: str | Path):
-    target = Path(target).resolve()
-    if target == Path(original).resolve():
+def atomic_save(target: str | Path, content: bytes, *, original: str | Path,
+                fail_if_exists: bool = False):
+    target = Path(target).absolute()
+    if target.resolve() == Path(original).resolve():
         raise DocumentError("Het oorspronkelijke bestand mag niet overschreven worden")
     target.parent.mkdir(parents=True, exist_ok=True)
     path = None
@@ -575,7 +576,14 @@ def atomic_save(target: str | Path, content: bytes, *, original: str | Path):
             f.write(content)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(path,target)
+        if fail_if_exists:
+            # Same-directory hard links publish the complete, fsynced file
+            # atomically and refuse an existing destination (including links).
+            # If the filesystem does not support this, fail closed; never
+            # fall back to an overwrite-prone check-then-rename.
+            os.link(path, target)
+        else:
+            os.replace(path,target)
     finally:
         if path and path.exists():
             path.unlink()

@@ -237,7 +237,7 @@ class BatchQueue:
                     raise DocumentError("No unused output filename available")
                 # Single-process queue owns the directory selection. A future
                 # multi-process writer must use a filesystem-level reservation.
-                atomic_save(chosen, result, original=src)
+                atomic_save(chosen, result, original=src, fail_if_exists=True)
                 job.output = str(chosen)
                 job.status = "done"
         except Exception as exc:

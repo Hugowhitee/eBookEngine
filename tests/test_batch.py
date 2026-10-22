@@ -202,3 +202,23 @@ def test_batch_rejects_unknown_proposal_or_duplicate_approval(tmp_path):
     with pytest.raises(DocumentError, match="Duplicate"):
         queue.approve(job.id, approved_proposals=["archive_hygiene", "archive_hygiene"])
     assert queue.get(job.id).status == "needs_review"
+
+
+def test_batch_does_not_overwrite_output_appearing_mid_export(tmp_path, monkeypatch):
+    import ebookengine.batch as batch_module
+    from ebookengine.core import atomic_save as actual_save
+    book = fixture_book(tmp_path)
+    q = BatchQueue(tmp_path / "state.json")
+    entry = q.add([book])[0]
+    q.inspect_next()
+    q.approve(entry.id, edits={"description": "New description"})
+    def racing_writer(target, content, *, original, fail_if_exists=False):
+        assert fail_if_exists
+        target.write_bytes(b"other export")
+        return actual_save(target, content, original=original,
+                           fail_if_exists=fail_if_exists)
+    monkeypatch.setattr(batch_module, "atomic_save", racing_writer)
+    outcome = q.run_next(tmp_path / "results")
+    assert outcome.status == "error"
+    assert not outcome.output
+    assert (tmp_path / "results" / "test - eBookEngine.epub").read_bytes() == b"other export"
