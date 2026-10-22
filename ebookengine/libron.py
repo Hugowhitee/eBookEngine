@@ -6,6 +6,7 @@ the resulting publication. This is deliberately not font subsetting.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
@@ -22,6 +23,24 @@ STYLES = ("Regular", "Italic", "Bold", "BoldItalic")
 FONTS = {style: f"Libron-{style}.ttf" for style in STYLES}
 MAX_FONT_BYTES = 3 * 1024 * 1024
 MAX_ZIP_BYTES = 8 * 1024 * 1024
+
+
+class _LazyArchive(Mapping):
+    """Access original ZIP entries on demand rather than copying all assets."""
+    def __init__(self, archive):
+        self.archive = archive
+        self.names = tuple(archive.namelist())
+
+    def __iter__(self):
+        return iter(self.names)
+
+    def __len__(self):
+        return len(self.names)
+
+    def __getitem__(self, name):
+        if name not in self.archive.NameToInfo:
+            raise KeyError(name)
+        return self.archive.read(name)
 
 
 def load_libron_zip(path: str | Path) -> dict[str, bytes]:
@@ -83,7 +102,7 @@ def embed_libron(source, candidate: bytes, fonts: dict[str, bytes],
 
     with ZipFile(BytesIO(candidate)) as archive:
         verify_archive(archive)
-        original = {name: archive.read(name) for name in archive.namelist()}
+        original = _LazyArchive(archive)
         if "META-INF/encryption.xml" in original:
             raise DocumentError("Font embedding unavailable for encrypted EPUB")
         opf = _parse_xml(original[source.opf_path])
