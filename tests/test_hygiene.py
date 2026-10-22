@@ -29,14 +29,16 @@ def test_os_debris_cleanup_preserves_book_and_is_undoable(tmp_path):
         for name in after.namelist():
             assert after.read(name) == before.read(name)
     assert book.read_bytes() == original
-    session.undo()
-    assert "archive_hygiene" not in session.changes
+    session.toggle("archive_hygiene")
     restored = session.build()
     assert session.verify_candidate(restored)
     with ZipFile(BytesIO(restored)) as archive:
         assert set(paths) <= set(archive.namelist())
-    session.redo()
+    session.undo()
+    assert session.changes["archive_hygiene"].enabled
     assert session.verify_candidate(session.build())
+    session.redo()
+    assert not session.changes["archive_hygiene"].enabled
 
 
 def test_never_remove_manifest_declared_debris(tmp_path):
