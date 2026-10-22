@@ -509,7 +509,9 @@ class ChangeSession:
             if "META-INF/signatures.xml" in check.namelist():
                 raise DocumentError("EPUB has digital signatures; editing would invalidate them")
             if "META-INF/encryption.xml" in check.namelist():
-                raise DocumentError("Encrypted EPUB requires dedicated safe handling")
+                from .protection import is_font_obfuscation_only
+                if not is_font_obfuscation_only(self.source):
+                    raise DocumentError("Encrypted EPUB requires dedicated safe handling")
         candidate = self.source.create(changes, extra_css=self.extra_css)
         if self.changes.get("archive_hygiene") and self.changes["archive_hygiene"].enabled:
             from .hygiene import removable_entries, remove_os_debris
