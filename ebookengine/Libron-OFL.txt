@@ -1,1 +1,2 @@
 Libron © 2026 Nico Verbruggen. SIL Open Font License 1.1. The complete license is at https://github.com/nicoverbruggen/libron/blob/main/LICENSE
+Please see the complete upstream license.
