@@ -8,7 +8,7 @@
 
 ## Required gates still open
 
-- **Windows native packaged run:** manual Windows Action build, clean unzip/launch, several real interactive file-edit/save workflows; no false `PASS` until demonstrated.
+- **Libron (feature branch):** Validate actual four-style v0.31 ZIP import, EPUBCheck 5.4.0 conformance, font/weight/italic rendering in Calibre and Kobo, license notice and a real Windows package; source-level implementation does not mean release proof.\n- **Windows native packaged run:** manual Windows Action build, clean unzip/launch, several real interactive file-edit/save workflows; no false `PASS` until demonstrated.
 - **UX:** selectable PDF OCR blocks/manual corrections and editable reading order, PDF-to-EPUB region mapping, richer faithful EPUB CSS viewer, accessibility/dark-theme and screen-size QA.
 - **Advanced PDF:** in-app installation, speed/RAM/offline/diagram/table/figure completeness on representative illustrated sources, real Docling runtime + model tests.
 - **Local AI:** real downloaded CPU runtime/model installation (size/checksum/retry/cancel), deterministic test of proposals and offline reuse, package/runtime tests.

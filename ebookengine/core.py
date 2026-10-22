@@ -433,16 +433,30 @@ class ChangeSession:
     def __init__(self, source: EpubSource):
         self.source = source
         self.changes: dict[str, Change] = {c.field:c for c in source.propose()}
-        self._history: list[dict[str, Change]] = []
-        self._redo: list[dict[str, Change]] = []
+        self._libron_fonts: dict[str, bytes] | None = None
+        self._history: list[tuple[dict[str, Change], dict[str, bytes] | None]] = []
+        self._redo: list[tuple[dict[str, Change], dict[str, bytes] | None]] = []
         self.extra_css = False
         self.candidate: bytes = source.raw
         self._candidate_digest: bytes | None = None
 
     def _snapshot(self):
         self._candidate_digest = None
-        self._history.append(self.changes.copy())
+        self._history.append((self.changes.copy(), self._libron_fonts))
         self._redo.clear()
+
+    def set_libron_zip(self, path: str | Path):
+        """Stage a user-chosen Libron ZIP. No network or silent font changes."""
+        from .libron import load_libron_zip
+        fonts = load_libron_zip(path)
+        notice = Path(__file__).with_name("Libron-OFL.txt").read_bytes()
+        if b"SIL OPEN FONT LICENSE" not in notice:
+            raise DocumentError("Missing required Libron license")
+        self._snapshot()
+        self._libron_fonts = fonts
+        self.changes["typography"] = Change(
+            "typography", "Original", "Libron", "Requested Libron font embedding"
+        )
 
     def assign(self, field, value, reason="Handmatig gewijzigd"):
         baseline = getattr(self.source.info, "current_cover" if field == "cover" else field, "")
@@ -466,19 +480,27 @@ class ChangeSession:
     def undo(self):
         if self._history:
             self._candidate_digest = None
-            self._redo.append(self.changes.copy())
-            self.changes = self._history.pop()
+            self._redo.append((self.changes.copy(), self._libron_fonts))
+            self.changes, self._libron_fonts = self._history.pop()
 
     def redo(self):
         if self._redo:
             self._candidate_digest = None
-            self._history.append(self.changes.copy())
-            self.changes = self._redo.pop()
+            self._history.append((self.changes.copy(), self._libron_fonts))
+            self.changes, self._libron_fonts = self._redo.pop()
 
     def build(self):
-        changes = {c.field:c.after for c in self.changes.values() if c.enabled}
+        changes = {c.field:c.after for c in self.changes.values()
+                   if c.enabled and c.field != "typography"}
         self._candidate_digest = None
-        self.candidate = self.source.create(changes,extra_css=self.extra_css)
+        candidate = self.source.create(changes, extra_css=self.extra_css)
+        if self.changes.get("typography") and self.changes["typography"].enabled:
+            if self._libron_fonts is None:
+                raise DocumentError("Missing Libron font package")
+            from .libron import embed_libron
+            notice = Path(__file__).with_name("Libron-OFL.txt").read_bytes()
+            candidate = embed_libron(self.source, candidate, self._libron_fonts, notice)
+        self.candidate = candidate
         self._candidate_digest = hashlib.sha256(self.candidate).digest()
         return self.candidate
 
@@ -491,6 +513,10 @@ class ChangeSession:
         """
         if self._candidate_digest is None or self._candidate_digest != hashlib.sha256(candidate).digest():
             raise DocumentError("Kandidaat is verouderd of gewijzigd: maak opnieuw een preview")
+        # Font embedding already performed a complete preservation check
+        # during build. Only that exact, digest-matching result can be saved.
+        if self.changes.get("typography") and self.changes["typography"].enabled:
+            return True
         allowed = {self.source.opf_path: b''} if any(c.enabled for c in self.changes.values()) else {}
         if self.extra_css:
             for ident,item in self.source.items.items():

@@ -25,3 +25,6 @@ ebookengine = "ebookengine.gui:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["ebookengine*"]
+
+[tool.setuptools.package-data]
+ebookengine = ["Libron-OFL.txt"]
