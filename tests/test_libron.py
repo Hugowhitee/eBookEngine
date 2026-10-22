@@ -87,3 +87,26 @@ def test_candidate_must_match_latest_font_and_metadata_edits(tmp_path, monkeypat
     with ZipFile(BytesIO(updated)) as archive:
         assert b"A reviewed description" in archive.read(source.opf_path)
         assert b"SIL OPEN FONT LICENSE" in archive.read("META-INF/Libron-OFL.txt")
+
+
+
+def test_epub3_libron_uses_true_type_mime(tmp_path, monkeypatch):
+    book = fixture_book(tmp_path)
+    epub3 = tmp_path / "epub3.epub"
+    with ZipFile(book) as original, ZipFile(epub3, "w") as output:
+        for entry in original.infolist():
+            content = original.read(entry)
+            if entry.filename == "content.opf":
+                content = content.replace(b'version="2.0"', b'version="3.0"')
+            output.writestr(entry, content)
+    session = ChangeSession(EpubSource(epub3))
+    session.set_libron_zip(_font_zip(tmp_path, monkeypatch))
+    candidate = session.build()
+    assert session.verify_candidate(candidate)
+    with ZipFile(BytesIO(candidate)) as archive:
+        package = etree.fromstring(archive.read("content.opf"))
+        fonts = [item for item in package.iter()
+                 if isinstance(item.tag, str) and item.tag.endswith("item")
+                 and (item.get("href") or "").endswith(".ttf")]
+        assert len(fonts) == 4
+        assert all(item.get("media-type") == "font/ttf" for item in fonts)
