@@ -62,11 +62,18 @@ def inspect_epub(path: str | Path) -> Preflight:
         filenames = set(archive.namelist())
         flags = ("META-INF/encryption.xml", "META-INF/rights.xml",
                  "META-INF/signatures.xml")
+        from .protection import is_font_obfuscation_only
+        font_obfuscation = "META-INF/encryption.xml" in filenames and is_font_obfuscation_only(source)
         for flag in flags:
-            if flag in filenames:
-                severity = "blocker" if ("encryption" in flag or "signatures" in flag) else "review"
-                note("protected-or-signed", severity,
-                     "Protected/signed EPUB requires investigation before changing content", flag)
+            if flag not in filenames:
+                continue
+            if flag == "META-INF/encryption.xml" and font_obfuscation:
+                note("obfuscated-font", "info",
+                     "Only standard font obfuscation detected; keep original font assets intact", flag)
+                continue
+            severity = "blocker" if ("encryption" in flag or "signatures" in flag) else "review"
+            note("protected-or-signed", severity,
+                 "Protected/signed EPUB requires investigation before changing content", flag)
 
         styles = [item for item in source.items.values()
                   if item.get("media-type") == "text/css"]
