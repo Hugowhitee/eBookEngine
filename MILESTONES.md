@@ -28,7 +28,14 @@ Do not call a book clean merely because it passed archive inspection or its meta
 
 - Proposed OS debris removal is integrated with ChangeSession, undo/redo and selective archive verification. Retained files are compared byte-for-byte, with bounded streaming in the new cleanup layer; this does not fix the larger EpubSource whole-book memory model.
 - Preflight checks broken local links and anchors, duplicate XHTML IDs and unverified XML bases. A separate strict EPUB2-only NCX generator attaches a missing navigation document from trusted XHTML headings without changing chapter bytes. It distinguishes standard IDPF font obfuscation from unknown encryption and refuses edits to signed EPUBs.
-- Regression tests were added for these cases, but a full Python test run, EPUBCheck, a real Libron ZIP, Windows packaging and reader rendering have **not** been executed in the current development session. The work remains DRAFT.
+- Python regression tests and a synthetic repaired EPUB2's EPUBCheck were successfully executed (see measured verification above). A real Libron ZIP, Windows packaging and reader rendering have **not** been tested. The work remains DRAFT.
+
+## Measured verification — 2026-10-22
+
+- Python 3.12 hosted CI: **45 passed, 1 skipped** on the draft branch (run: https://github.com/Hugowhitee/eBookEngine/actions/runs/39855503087).
+- One synthetic, corrected EPUB 2 publication with reconstructed NCX independently passed **EPUBCheck 5.4.0**, with 0 fatals/errors/warnings/infos. This proves that sample, **not** arbitrary real books or EPUB 3 navigation.
+- Regression coverage includes source-safe OS debris removal, local-link detection, font-obfuscation classification, explicitly approved queue proposals, restart/error recovery and no-overwrite batch publication.
+- Still unverified: real-book render quality, real Libron v0.31 styles and glyphs, Windows packaged runtime, memory benchmarks on large EPUBs, EPUB3 nav reconstruction, TOC hierarchy/footnotes and full ebook-cleanup skill parity.
 
 ## Required gates still open
 
