@@ -161,3 +161,44 @@ def test_dont_repack_unchanged_epub(tmp_path):
     result = session.build()
     assert result == path.read_bytes()
     assert session.verify_candidate(result)
+
+
+def test_batch_does_not_apply_proposed_repairs_without_per_item_approval(tmp_path):
+    from ebookengine.core import ChangeSession
+    from io import BytesIO
+    from zipfile import ZipFile
+    path = fixture_book(tmp_path, {"Thumbs.db": b"cache"})
+    assert "archive_hygiene" in ChangeSession(EpubSource(path)).changes
+    queue = BatchQueue(tmp_path / "queue.json")
+    job = queue.add([path])[0]
+    queue.inspect_next()
+    queue.approve(job.id)
+    result = queue.run_next(tmp_path / "out")
+    assert result.status == "unchanged"
+    assert result.output is None
+    assert "Thumbs.db" in ZipFile(path).namelist()
+
+    # The identical book can be requeued and its specific cleanup proposal
+    # approved, without automatically approving other unrelated proposals.
+    queue.cancel(job.id) if job.status in ("queued", "approved") else None
+    followup = BatchQueue(tmp_path / "second-queue.json")
+    new_job = followup.add([path])[0]
+    followup.inspect_next()
+    followup.approve(new_job.id, approved_proposals=["archive_hygiene"])
+    saved = followup.run_next(tmp_path / "out")
+    assert saved.status == "done"
+    with ZipFile(saved.output) as archive:
+        assert "Thumbs.db" not in archive.namelist()
+        assert b"Last chapter 2" in archive.read("chapter2.xhtml")
+
+
+def test_batch_rejects_unknown_proposal_or_duplicate_approval(tmp_path):
+    path = fixture_book(tmp_path)
+    queue = BatchQueue(tmp_path / "queue.json")
+    job = queue.add([path])[0]
+    queue.inspect_next()
+    with pytest.raises(DocumentError, match="Unknown"):
+        queue.approve(job.id, approved_proposals=["rewrite_author_text"])
+    with pytest.raises(DocumentError, match="Duplicate"):
+        queue.approve(job.id, approved_proposals=["archive_hygiene", "archive_hygiene"])
+    assert queue.get(job.id).status == "needs_review"
