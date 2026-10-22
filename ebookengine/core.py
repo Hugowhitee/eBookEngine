@@ -319,6 +319,11 @@ class EpubSource:
         if junk:
             changes.append(Change("archive_hygiene", str(len(junk)) + " files",
                                   "remove OS debris", "Unreferenced operating-system files", True))
+        from .navigation import propose_ncx
+        if propose_ncx(self) is not None:
+            changes.append(Change("navigation", "Missing EPUB2 NCX",
+                                  "Generate chapter navigation",
+                                  "Every linear XHTML chapter has a source heading", True))
         return changes
 
     def create(self, edits: dict[str,str], *, extra_css: bool=False) -> bytes:
@@ -497,7 +502,7 @@ class ChangeSession:
 
     def build(self):
         changes = {c.field:c.after for c in self.changes.values()
-                   if c.enabled and c.field not in ("typography", "archive_hygiene")}
+                   if c.enabled and c.field not in ("typography", "archive_hygiene", "navigation")}
         self._candidate_digest = None
         has_changes = any(c.enabled for c in self.changes.values()) or self.extra_css
         if not has_changes:
@@ -516,6 +521,12 @@ class ChangeSession:
         if self.changes.get("archive_hygiene") and self.changes["archive_hygiene"].enabled:
             from .hygiene import removable_entries, remove_os_debris
             candidate = remove_os_debris(self.source, candidate, removable_entries(self.source))
+        if self.changes.get("navigation") and self.changes["navigation"].enabled:
+            from .navigation import propose_ncx, apply_ncx
+            plan = propose_ncx(self.source)
+            if plan is None:
+                raise DocumentError("Missing or stale EPUB 2 navigation repair proposal")
+            candidate = apply_ncx(self.source, candidate, plan)
         if self.changes.get("typography") and self.changes["typography"].enabled:
             if self._libron_fonts is None:
                 raise DocumentError("Missing Libron font package")
@@ -537,7 +548,8 @@ class ChangeSession:
             raise DocumentError("Kandidaat is verouderd of gewijzigd: maak opnieuw een preview")
         # Font embedding already performed a complete preservation check
         # during build. Only that exact, digest-matching result can be saved.
-        if self.changes.get("typography") and self.changes["typography"].enabled:
+        if any(self.changes.get(key) and self.changes[key].enabled
+               for key in ("typography", "navigation")):
             return True
         allowed = {self.source.opf_path: b''} if any(c.enabled for c in self.changes.values()) else {}
         if self.extra_css:
