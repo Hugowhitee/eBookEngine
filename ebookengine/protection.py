@@ -26,7 +26,7 @@ def is_font_obfuscation_only(source) -> bool:
     font_paths = {
         source.paths[ident] for ident, item in source.items.items()
         if item.get("media-type") in _FONT_MIME
-        or (item.get("href") or "").lower().endswith((".ttf", ".otf"))
+        and (item.get("href") or "").lower().endswith((".ttf", ".otf"))
     }
     try:
         with ZipFile(BytesIO(source.raw)) as archive:
