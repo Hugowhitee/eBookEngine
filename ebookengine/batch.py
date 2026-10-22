@@ -105,10 +105,10 @@ class BatchQueue:
             if sniff(path) != "EPUB":
                 raise DocumentError("Batch EPUB engine does not yet process PDF")
             job = BookJob(id=uuid.uuid4().hex, source=str(path))
-            self.jobs.append(job)
             seen.add(path)
             added.append(job)
         if added:
+            self.jobs.extend(added)
             self._save()
         return added
 
