@@ -126,3 +126,38 @@ def test_add_is_atomic_when_later_input_is_invalid(tmp_path):
         q.add([book, tmp_path / "missing.epub"])
     assert not q.jobs
     assert not (tmp_path / "queue.json").exists()
+
+
+
+def test_signed_epub_is_inspected_but_not_approved_or_modified(tmp_path):
+    source = fixture_book(tmp_path, {
+        "META-INF/signatures.xml": b'<signatures xmlns="urn:oasis:names:tc:opendocument:xmlns:digitalsignature:1.0"/>'
+    })
+    before = source.read_bytes()
+    queue = BatchQueue(tmp_path / "queue.json")
+    book = queue.add([source])[0]
+    inspected = queue.inspect_next()
+    assert inspected.id == book.id
+    assert inspected.status == "needs_review"
+    assert any(item["severity"] == "blocker" for item in inspected.findings)
+    with pytest.raises(DocumentError, match="blockers"):
+        queue.approve(book.id, edits={"description": "Change"})
+    assert queue.run_next(tmp_path / "output") is None
+    assert source.read_bytes() == before
+    from ebookengine.core import ChangeSession
+    changes = ChangeSession(EpubSource(source))
+    changes.assign("description", "Would invalidate signature")
+    with pytest.raises(DocumentError, match="signatures"):
+        changes.build()
+
+
+def test_dont_repack_unchanged_epub(tmp_path):
+    path = fixture_book(tmp_path)
+    from ebookengine.core import ChangeSession
+    session = ChangeSession(EpubSource(path))
+    for field, change in list(session.changes.items()):
+        if change.enabled:
+            session.toggle(field)
+    result = session.build()
+    assert result == path.read_bytes()
+    assert session.verify_candidate(result)
