@@ -135,6 +135,9 @@ def apply_ncx(source, candidate: bytes, plan: NcxPlan) -> bytes:
         header = etree.SubElement(ncx, f"{{{NCX_NS}}}head")
         etree.SubElement(header, f"{{{NCX_NS}}}meta", name="dtb:uid",
                          content=plan.publication_uid)
+        etree.SubElement(header, f"{{{NCX_NS}}}meta", name="dtb:depth", content="1")
+        etree.SubElement(header, f"{{{NCX_NS}}}meta", name="dtb:totalPageCount", content="0")
+        etree.SubElement(header, f"{{{NCX_NS}}}meta", name="dtb:maxPageNumber", content="0")
         doc_title = etree.SubElement(ncx, f"{{{NCX_NS}}}docTitle")
         etree.SubElement(doc_title, f"{{{NCX_NS}}}text").text = plan.title
         nav_map = etree.SubElement(ncx, f"{{{NCX_NS}}}navMap")

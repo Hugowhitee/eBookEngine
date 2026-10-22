@@ -15,7 +15,7 @@ OPF = b"""<?xml version="1.0"?>
 <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="id" version="2.0">
 <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
 <dc:identifier id="id">urn:isbn:1234567890000</dc:identifier>
-<dc:title>Sample Book</dc:title><dc:creator>Original Author</dc:creator>
+<dc:title>Sample Book</dc:title><dc:creator>Original Author</dc:creator><dc:language>en</dc:language>
 </metadata>
 <manifest>
 <item id="one" href="Text/one.xhtml" media-type="application/xhtml+xml"/>
