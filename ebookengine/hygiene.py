@@ -6,11 +6,11 @@ the caller must approve this as a typed change and validate the exact output.
 """
 from __future__ import annotations
 
+from copy import copy
 from io import BytesIO
+from shutil import copyfileobj
 from pathlib import PurePosixPath
 from zipfile import ZipFile, ZIP_STORED
-import re
-
 from .core import DocumentError, verify_archive
 
 _SYSTEM_NAMES = frozenset({".DS_Store", "Thumbs.db", "desktop.ini"})
@@ -51,27 +51,39 @@ def removable_entries(source) -> tuple[str, ...]:
             return ()
         # Checking conservatively for raw path and basename mentions also
         # catches CSS/XML references that are not declared in the OPF.
-        scan = []
+        eligible = {
+            name for name in candidates
+            if not name.endswith("/")
+            or not any(x != name and x.startswith(name) for x in entries)
+        }
+        # Scan one content file at a time, not an in-memory list of all text
+        # resources. False-positive reference matches are intentionally safe.
         for path in entries:
-            lower = path.lower()
-            if lower.endswith((".xhtml", ".html", ".htm", ".xml", ".ncx", ".css", ".svg", ".opf")):
-                try:
-                    scan.append(archive.read(path))
-                except (KeyError, OSError) as exc:
-                    raise DocumentError(f"Cannot inspect referenced source: {path}") from exc
-        result = []
-        for name in candidates:
-            if name.endswith("/"):
-                # Only remove an empty directory entry, never a directory with
-                # contents whose use cannot be proven here.
-                if any(x != name and x.startswith(name) for x in entries):
-                    continue
-            leaf = PurePosixPath(name.rstrip("/")).name
-            names = (name.encode("utf-8"), leaf.encode("utf-8"))
-            if any(needle in payload for needle in names for payload in scan):
+            if not eligible:
+                break
+            if not path.lower().endswith(
+                (".xhtml", ".html", ".htm", ".xml", ".ncx", ".css", ".svg", ".opf")
+            ):
                 continue
-            result.append(name)
-        return tuple(result)
+            try:
+                with archive.open(path) as stream:
+                    carry = b""
+                    max_pattern = max(
+                        max(len(name.encode("utf-8")), len(PurePosixPath(name.rstrip("/")).name.encode("utf-8")))
+                        for name in eligible
+                    )
+                    while chunk := stream.read(64 * 1024):
+                        data = carry + chunk
+                        for name in tuple(eligible):
+                            base = PurePosixPath(name.rstrip("/")).name
+                            if name.encode("utf-8") in data or base.encode("utf-8") in data:
+                                eligible.remove(name)
+                        carry = data[-(max_pattern - 1):] if max_pattern > 1 else b""
+                        if not eligible:
+                            break
+            except (KeyError, OSError) as exc:
+                raise DocumentError(f"Cannot inspect referenced source: {path}") from exc
+        return tuple(name for name in candidates if name in eligible)
 
 
 def remove_os_debris(source, candidate: bytes, selected: tuple[str, ...]) -> bytes:
@@ -90,10 +102,14 @@ def remove_os_debris(source, candidate: bytes, selected: tuple[str, ...]) -> byt
             for info in original.infolist():
                 if info.filename in selected:
                     continue
-                destination.writestr(
-                    info, original.read(info.filename),
-                    compress_type=ZIP_STORED if info.filename == "mimetype" else info.compress_type
-                )
+                output_info = copy(info)
+                if info.filename == "mimetype":
+                    output_info.compress_type = ZIP_STORED
+                if info.is_dir():
+                    destination.writestr(output_info, b"")
+                    continue
+                with original.open(info) as reader, destination.open(output_info, "w") as writer:
+                    copyfileobj(reader, writer, length=64 * 1024)
     result = output.getvalue()
     with ZipFile(BytesIO(candidate)) as before, ZipFile(BytesIO(result)) as after:
         verify_archive(after)
@@ -102,6 +118,13 @@ def remove_os_debris(source, candidate: bytes, selected: tuple[str, ...]) -> byt
         if after.testzip() is not None:
             raise DocumentError("Corrupt EPUB after archive cleanup")
         for path in after.namelist():
-            if before.read(path) != after.read(path):
-                raise DocumentError(f"Unapproved archive payload change: {path}")
+            if path.endswith("/"):
+                continue
+            with before.open(path) as left, after.open(path) as right:
+                while True:
+                    chunk = left.read(64 * 1024)
+                    if chunk != right.read(64 * 1024):
+                        raise DocumentError(f"Unapproved archive payload change: {path}")
+                    if not chunk:
+                        break
     return result
