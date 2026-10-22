@@ -72,7 +72,15 @@ def audit_internal_links(source) -> tuple[LinkIssue, ...]:
                 continue
 
             existing_ids: set[str] = set()
+            xml_base = "{http://www.w3.org/XML/1998/namespace}base"
+            uses_xml_base = any(n.get(xml_base) for n in root.iter()
+                                if isinstance(n.tag, str))
+            if uses_xml_base:
+                issue("unverified-xml-base", path, path,
+                      "xml:base changes link resolution; review this document")
             for node in root.iter():
+                if not isinstance(node.tag, str):
+                    continue
                 ident = node.get("id")
                 if ident:
                     if ident in existing_ids:
@@ -81,10 +89,7 @@ def audit_internal_links(source) -> tuple[LinkIssue, ...]:
                     existing_ids.add(ident)
                 if etree.QName(node).localname == "a" and node.get("name"):
                     existing_ids.add(node.get("name"))
-                if any(element.get("{http://www.w3.org/XML/1998/namespace}base")
-                       for element in [node, *node.iterancestors()]):
-                    issue("unverified-xml-base", path, path,
-                          "xml:base changes URL resolution; reference not auto-checked")
+                if uses_xml_base:
                     continue
                 localname = etree.QName(node).localname
                 if localname in ("a", "link", "area") and node.get("href"):
