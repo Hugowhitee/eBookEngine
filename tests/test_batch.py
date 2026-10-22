@@ -84,6 +84,8 @@ def test_stale_input_fails_only_its_job(tmp_path):
     rejected = queue.run_next(tmp_path / "out")
     assert rejected.status == "error"
     assert rejected.output is None
+    assert queue.retry(a.id).status == "queued"
+    assert queue.inspect_next().status == "needs_review"
     completed = queue.run_next(tmp_path / "out")
     assert completed.id == b.id
     assert completed.status == "done"
