@@ -64,7 +64,8 @@ def inspect_epub(path: str | Path) -> Preflight:
                  "META-INF/signatures.xml")
         for flag in flags:
             if flag in filenames:
-                note("protected-or-signed", "blocker" if "encryption" in flag else "review",
+                severity = "blocker" if ("encryption" in flag or "signatures" in flag) else "review"
+                note("protected-or-signed", severity,
                      "Protected/signed EPUB requires investigation before changing content", flag)
 
         styles = [item for item in source.items.values()
@@ -142,6 +143,17 @@ def inspect_epub(path: str | Path) -> Preflight:
         if len(source.spine) > 80:
             note("partial-sampling", "info", "Only first 80 spine entries sampled",
                  "spine")
+
+    from .hygiene import removable_entries
+    from .links import audit_internal_links
+    junk = removable_entries(source)
+    if junk:
+        note("os-archive-debris", "info",
+             f"{len(junk)} unreferenced operating-system entries can be safely removed",
+             ", ".join(junk[:4]))
+    for link in audit_internal_links(source):
+        severity = "review" if not link.code.startswith("unverified-") else "info"
+        note(link.code, severity, link.detail, f"{link.source} -> {link.target}")
 
     blocked = any(x.severity == "blocker" for x in evidence)
     # A suspected conversion is for manual reconstruction review, not an
