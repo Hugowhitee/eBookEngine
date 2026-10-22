@@ -10,6 +10,10 @@
 
 Queue state and final output files are deliberately separate. A queue record is not an ebook library; job state persists in one atomic JSON snapshot, with interrupted running work returned to review rather than silently retried. A future UI must bind to these same states instead of keeping its own duplicate queue. Multiple independent app processes cannot safely mutate the same JSON store yet.
 
+## Conservative deterministic EPUB repair
+
+`hygiene.removable_entries` proposes removal of unreferenced OS archive debris only; `remove_os_debris` streams retained payloads and verifies their byte identity before handoff. `ChangeSession` owns approval/undo and the digest-bound candidate. `links.audit_internal_links` reports (but does not guess repairs for) broken local references and anchors. `protection.is_font_obfuscation_only` distinguishes legitimate IDPF font obfuscation from unsupported encryption. Signed EPUB edits are refused, and no-op sessions return the untouched source bytes. These are early, narrow components rather than a complete EPUB cleanup or reader validation engine.
+
 ## Windows UI
 
 The actual implementation uses Python 3.12 `tkinter/ttk` for native system buttons and fewer moving parts; the earlier PySide6 choice was provisional. One document-first main window, split source/result viewer, context-specific output selector, TOC/page navigation, editable EPUB cover/metadata, change toggle and Undo/Redo, worker progress/cancel, Save as. EPUB text preview is sanitized and does **not** claim identical pagination/rendering to a Kobo/Calibre renderer. Windows onedir distribution bundles Python, PDFium and Tesseract. No forced login or cloud conversion.
