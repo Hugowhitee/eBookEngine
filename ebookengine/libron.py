@@ -7,6 +7,7 @@ the resulting publication. This is deliberately not font subsetting.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from copy import copy
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
@@ -193,22 +194,22 @@ def embed_libron(source, candidate: bytes, fonts: dict[str, bytes],
         output = BytesIO()
         with ZipFile(output, "w") as destination:
             for info in archive.infolist():
-                destination.writestr(info, altered.get(info.filename, original[info.filename]),
+                destination.writestr(copy(info), altered.get(info.filename, original[info.filename]),
                                      compress_type=ZIP_STORED if info.filename == "mimetype" else info.compress_type)
             for path in [stylesheet, *font_paths.values(), notice_path]:
                 destination.writestr(path, altered[path], compress_type=ZIP_DEFLATED)
 
     value = output.getvalue()
-    with ZipFile(BytesIO(value)) as result:
+    with ZipFile(BytesIO(candidate)) as previous, ZipFile(BytesIO(value)) as result:
         verify_archive(result)
-        if result.testzip() is not None or set(original) - set(result.namelist()):
+        if result.testzip() is not None or set(previous.namelist()) - set(result.namelist()):
             raise DocumentError("Invalid Libron EPUB output")
         if result.namelist()[0] != "mimetype":
             raise DocumentError("Invalid EPUB archive ordering")
-        for name, payload in original.items():
-            if name not in altered and result.read(name) != payload:
+        for name in previous.namelist():
+            if name not in altered and result.read(name) != previous.read(name):
                 raise DocumentError(f"Unrequested file modification: {name}")
         for name in touched:
-            if "".join(_parse_xml(result.read(name)).itertext()) != "".join(_parse_xml(original[name]).itertext()):
+            if "".join(_parse_xml(result.read(name)).itertext()) != "".join(_parse_xml(previous.read(name)).itertext()):
                 raise DocumentError(f"Author text not preserved: {name}")
     return value

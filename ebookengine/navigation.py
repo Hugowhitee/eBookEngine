@@ -6,6 +6,7 @@ no chapter is reordered, and EPUB 3 publications are deliberately excluded.
 """
 from __future__ import annotations
 
+from copy import copy
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import PurePosixPath
@@ -150,7 +151,7 @@ def apply_ncx(source, candidate: bytes, plan: NcxPlan) -> bytes:
         with ZipFile(output, "w") as target:
             for info in previous.infolist():
                 value = changed_opf if info.filename == source.opf_path else previous.read(info.filename)
-                target.writestr(info, value, compress_type=ZIP_STORED
+                target.writestr(copy(info), value, compress_type=ZIP_STORED
                                 if info.filename == "mimetype" else info.compress_type)
             target.writestr(plan.path, changed_ncx, compress_type=ZIP_DEFLATED)
         generated = output.getvalue()
