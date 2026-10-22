@@ -140,3 +140,18 @@ def test_export_verifies_exact_built_candidate_and_rejects_stale_edit(tmp_path):
     assert changes.verify_candidate(rebuilt)
     changes.undo()
     with pytest.raises(DocumentError):changes.verify_candidate(rebuilt)
+
+
+def test_atomic_save_can_refuse_existing_outputs(tmp_path):
+    before = tmp_path / "original.epub"
+    before.write_bytes(b"source")
+    existing = tmp_path / "target.epub"
+    existing.write_bytes(b"another user's valid output")
+    with pytest.raises(FileExistsError):
+        atomic_save(existing, b"new content", original=before, fail_if_exists=True)
+    assert existing.read_bytes() == b"another user's valid output"
+    created = tmp_path / "new.epub"
+    assert atomic_save(created, b"new content", original=before,
+                       fail_if_exists=True) == created
+    assert created.read_bytes() == b"new content"
+    assert before.read_bytes() == b"source"

@@ -34,6 +34,7 @@ jobs:
           pyinstaller --clean --noconfirm --windowed --onedir --name eBookEngine `
             --collect-all pypdfium2 `
             --add-data 'ebookengine/worker_docling.py;ebookengine' `
+            --add-data 'ebookengine/Libron-OFL.txt;ebookengine' `
             --add-data 'C:\Program Files\Tesseract-OCR;tesseract' `
             launcher.py
           if (!(Test-Path 'dist\eBookEngine\eBookEngine.exe')) { throw 'No runnable application' }

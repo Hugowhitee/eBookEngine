@@ -22,6 +22,14 @@ Other image-only formats are not silently promised until their ingestion/OCR is 
 
 Reconstruction of multi-column layouts, graphics, footnotes, equations and nested tables is **not inherently lossless**. Surface uncertainty instead of inventing or silently dropping material. A text/edit layer is not equivalent to unrestricted Acrobat-like page-layout editing.
 
+## Batch and redesigned editor contract
+
+One repair engine must serve a single EPUB or a persistent queue of many books. Import, inspect, review, approve, process and export are distinct statuses. The app must preserve order across restart, isolate per-book failures, prevent accidental overwrites and keep originals unchanged. Sequential work is the starting point to bound memory. PDF batch processing remains unsupported until it passes the same guarantees.
+
+Do not add further isolated buttons or panels to the legacy Tk interface. Design the entire queue, document preview, change inspector, Libron choice and save flow together after backend contracts and representative fixtures are ready. Review real empty, queued, blocked, selected, processing, error and completed states.
+
+The EPUB cleanup skill is the intended behavioral specification: preservation versus reconstruction, navigation, reflow, optional typography, noise and privacy, content checks and Kobo output choices. The engine must report unsupported steps rather than calling an unchanged EPUB 'clean'.
+
 ## AI / OCR
 Advanced local OCR and document reconstruction and on-device AI are **required product capabilities**, but must not slow down or block fast deterministic EPUB cleaning. Model/runtime download is requested when needed and handled inside the GUI with size, disk/RAM prerequisites, progress, cancel/retry, clear error guidance and offline functionality after installation. Local AI proposes changes rather than silently overwriting author content. Personal annotations or translated editions are **rare optional actions**, outside the default workflow, built as reversible derivatives of a clean master.
 

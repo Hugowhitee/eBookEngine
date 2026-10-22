@@ -314,6 +314,16 @@ class EpubSource:
                             "Retailer placeholder detected; original cover found",True))
             except (ImportError,FileNotFoundError,ValueError,OSError):
                 pass
+        from .hygiene import removable_entries
+        junk = removable_entries(self)
+        if junk:
+            changes.append(Change("archive_hygiene", str(len(junk)) + " files",
+                                  "remove OS debris", "Unreferenced operating-system files", True))
+        from .navigation import propose_ncx
+        if propose_ncx(self) is not None:
+            changes.append(Change("navigation", "Missing EPUB2 NCX",
+                                  "Generate chapter navigation",
+                                  "Every linear XHTML chapter has a source heading", True))
         return changes
 
     def create(self, edits: dict[str,str], *, extra_css: bool=False) -> bytes:
@@ -392,7 +402,7 @@ class EpubSource:
         self.verify(candidate, modified)
         return candidate
 
-    def verify(self, candidate: bytes, allowed_modified: dict[str, bytes]|None=None):
+    def verify(self, candidate: bytes, allowed_modified: dict[str, bytes]|None=None, *, allowed_removed=()):
         with ZipFile(BytesIO(candidate)) as z:
             verify_archive(z)
             first = z.infolist()[0]
@@ -401,15 +411,16 @@ class EpubSource:
             if z.read("mimetype") != b"application/epub+zip":
                 raise DocumentError("Ongeldige EPUB-mimetype")
             changed = set((allowed_modified or {}).keys())
+            removed = set(allowed_removed)
             for path, sha in self._fingerprint.items():
-                if path not in changed and hashlib.sha256(z.read(path)).digest() != sha:
+                if path not in changed and path not in removed and hashlib.sha256(z.read(path)).digest() != sha:
                     raise DocumentError(f"Inhoud gewijzigd zonder toestemming: {path}")
             opf = _xml(z.read(self.opf_path))
             ids = {x.get("id"):x for x in opf.xpath(".//opf:manifest/opf:item", namespaces=NS)}
             spine = [x.get("idref") for x in opf.xpath(".//opf:spine/opf:itemref", namespaces=NS)]
             if spine != self.spine or set(ids) != set(self.items):
                 raise DocumentError("Leesvolgorde of manifest onverwacht veranderd")
-            if set(z.namelist()) != set(ZipFile(BytesIO(self.raw)).namelist()):
+            if set(z.namelist()) != set(ZipFile(BytesIO(self.raw)).namelist()) - removed:
                 raise DocumentError("EPUB verliest een origineel bestand")
             for x in ids.values():
                 if _join(self.base, x.get("href") or "") not in z.namelist():
@@ -433,16 +444,30 @@ class ChangeSession:
     def __init__(self, source: EpubSource):
         self.source = source
         self.changes: dict[str, Change] = {c.field:c for c in source.propose()}
-        self._history: list[dict[str, Change]] = []
-        self._redo: list[dict[str, Change]] = []
+        self._libron_fonts: dict[str, bytes] | None = None
+        self._history: list[tuple[dict[str, Change], dict[str, bytes] | None]] = []
+        self._redo: list[tuple[dict[str, Change], dict[str, bytes] | None]] = []
         self.extra_css = False
         self.candidate: bytes = source.raw
         self._candidate_digest: bytes | None = None
 
     def _snapshot(self):
         self._candidate_digest = None
-        self._history.append(self.changes.copy())
+        self._history.append((self.changes.copy(), self._libron_fonts))
         self._redo.clear()
+
+    def set_libron_zip(self, path: str | Path):
+        """Stage a user-chosen Libron ZIP. No network or silent font changes."""
+        from .libron import load_libron_zip
+        fonts = load_libron_zip(path)
+        notice = Path(__file__).with_name("Libron-OFL.txt").read_bytes()
+        if b"SIL OPEN FONT LICENSE" not in notice:
+            raise DocumentError("Missing required Libron license")
+        self._snapshot()
+        self._libron_fonts = fonts
+        self.changes["typography"] = Change(
+            "typography", "Original", "Libron", "Requested Libron font embedding"
+        )
 
     def assign(self, field, value, reason="Handmatig gewijzigd"):
         baseline = getattr(self.source.info, "current_cover" if field == "cover" else field, "")
@@ -466,19 +491,49 @@ class ChangeSession:
     def undo(self):
         if self._history:
             self._candidate_digest = None
-            self._redo.append(self.changes.copy())
-            self.changes = self._history.pop()
+            self._redo.append((self.changes.copy(), self._libron_fonts))
+            self.changes, self._libron_fonts = self._history.pop()
 
     def redo(self):
         if self._redo:
             self._candidate_digest = None
-            self._history.append(self.changes.copy())
-            self.changes = self._redo.pop()
+            self._history.append((self.changes.copy(), self._libron_fonts))
+            self.changes, self._libron_fonts = self._redo.pop()
 
     def build(self):
-        changes = {c.field:c.after for c in self.changes.values() if c.enabled}
+        changes = {c.field:c.after for c in self.changes.values()
+                   if c.enabled and c.field not in ("typography", "archive_hygiene", "navigation")}
         self._candidate_digest = None
-        self.candidate = self.source.create(changes,extra_css=self.extra_css)
+        has_changes = any(c.enabled for c in self.changes.values()) or self.extra_css
+        if not has_changes:
+            # No-op books retain original bytes without a redundant ZIP rewrite.
+            self.candidate = self.source.raw
+            self._candidate_digest = hashlib.sha256(self.candidate).digest()
+            return self.candidate
+        with ZipFile(BytesIO(self.source.raw)) as check:
+            if "META-INF/signatures.xml" in check.namelist():
+                raise DocumentError("EPUB has digital signatures; editing would invalidate them")
+            if "META-INF/encryption.xml" in check.namelist():
+                from .protection import is_font_obfuscation_only
+                if not is_font_obfuscation_only(self.source):
+                    raise DocumentError("Encrypted EPUB requires dedicated safe handling")
+        candidate = self.source.create(changes, extra_css=self.extra_css)
+        if self.changes.get("archive_hygiene") and self.changes["archive_hygiene"].enabled:
+            from .hygiene import removable_entries, remove_os_debris
+            candidate = remove_os_debris(self.source, candidate, removable_entries(self.source))
+        if self.changes.get("navigation") and self.changes["navigation"].enabled:
+            from .navigation import propose_ncx, apply_ncx
+            plan = propose_ncx(self.source)
+            if plan is None:
+                raise DocumentError("Missing or stale EPUB 2 navigation repair proposal")
+            candidate = apply_ncx(self.source, candidate, plan)
+        if self.changes.get("typography") and self.changes["typography"].enabled:
+            if self._libron_fonts is None:
+                raise DocumentError("Missing Libron font package")
+            from .libron import embed_libron
+            notice = Path(__file__).with_name("Libron-OFL.txt").read_bytes()
+            candidate = embed_libron(self.source, candidate, self._libron_fonts, notice)
+        self.candidate = candidate
         self._candidate_digest = hashlib.sha256(self.candidate).digest()
         return self.candidate
 
@@ -491,17 +546,27 @@ class ChangeSession:
         """
         if self._candidate_digest is None or self._candidate_digest != hashlib.sha256(candidate).digest():
             raise DocumentError("Kandidaat is verouderd of gewijzigd: maak opnieuw een preview")
+        # Font embedding already performed a complete preservation check
+        # during build. Only that exact, digest-matching result can be saved.
+        if any(self.changes.get(key) and self.changes[key].enabled
+               for key in ("typography", "navigation")):
+            return True
         allowed = {self.source.opf_path: b''} if any(c.enabled for c in self.changes.values()) else {}
         if self.extra_css:
             for ident,item in self.source.items.items():
                 if item.get('media-type') == 'text/css':
                     allowed[self.source.paths[ident]] = b''
-        return self.source.verify(candidate, allowed_modified=allowed)
+        removed = ()
+        if self.changes.get("archive_hygiene") and self.changes["archive_hygiene"].enabled:
+            from .hygiene import removable_entries
+            removed = removable_entries(self.source)
+        return self.source.verify(candidate, allowed_modified=allowed, allowed_removed=removed)
 
 
-def atomic_save(target: str | Path, content: bytes, *, original: str | Path):
-    target = Path(target).resolve()
-    if target == Path(original).resolve():
+def atomic_save(target: str | Path, content: bytes, *, original: str | Path,
+                fail_if_exists: bool = False):
+    target = Path(target).absolute()
+    if target.resolve() == Path(original).resolve():
         raise DocumentError("Het oorspronkelijke bestand mag niet overschreven worden")
     target.parent.mkdir(parents=True, exist_ok=True)
     path = None
@@ -511,7 +576,14 @@ def atomic_save(target: str | Path, content: bytes, *, original: str | Path):
             f.write(content)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(path,target)
+        if fail_if_exists:
+            # Same-directory hard links publish the complete, fsynced file
+            # atomically and refuse an existing destination (including links).
+            # If the filesystem does not support this, fail closed; never
+            # fall back to an overwrite-prone check-then-rename.
+            os.link(path, target)
+        else:
+            os.replace(path,target)
     finally:
         if path and path.exists():
             path.unlink()
