@@ -42,7 +42,13 @@ def propose_ncx(source) -> NcxPlan | None:
         return None
     if any(item.get("media-type") == "application/x-dtbncx+xml" for item in manifest):
         return None  # A present but broken NCX needs separate review.
-    if not source.title or len(source.spine) > 1000:
+    layout_values = [(node.text or "").strip().lower()
+                     for node in source.metadata.iter()
+                     if isinstance(node.tag, str)
+                     and node.get("property", "").endswith("layout")]
+    if "pre-paginated" in layout_values:
+        return None
+    if not source.title or len(source.title) > 500 or len(source.spine) > 1000:
         return None
     uid_id = opf.get("unique-identifier")
     identifiers = source.metadata.findall(f"{{{DC_NS}}}identifier")
