@@ -117,8 +117,13 @@ class BatchQueue:
         if job is None:
             return None
         try:
-            report = inspect_epub(job.source)
-            job.source_hash = _digest(Path(job.source))
+            source_path = Path(job.source)
+            starting_hash = _digest(source_path)
+            report = inspect_epub(source_path)
+            ending_hash = _digest(source_path)
+            if starting_hash != ending_hash:
+                raise DocumentError("Source changed during inspection; retry preflight")
+            job.source_hash = ending_hash
             job.findings = [asdict(item) for item in report.findings]
             job.workflow = report.workflow
             job.title = report.title
@@ -135,6 +140,8 @@ class BatchQueue:
         job = self.get(job_id)
         if job.status != "needs_review":
             raise DocumentError("Inspect and review book before approving")
+        if any(item.get("severity") == "blocker" for item in job.findings):
+            raise DocumentError("This book has unresolved EPUB blockers; cannot approve export")
         changes = dict(edits or {})
         if set(changes) - METADATA or any(not isinstance(v, str) for v in changes.values()):
             raise DocumentError("Unsupported EPUB metadata edit")
@@ -188,6 +195,8 @@ class BatchQueue:
             if not job.source_hash or _digest(src) != job.source_hash:
                 raise DocumentError("Source changed since review; inspect again")
             source = EpubSource(src)
+            if sha256(source.raw).hexdigest() != job.source_hash:
+                raise DocumentError("Source changed while loading; inspect again")
             session = ChangeSession(source)
             for key, value in job.edits.items():
                 session.assign(key, value)
