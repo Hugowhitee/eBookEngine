@@ -14,7 +14,7 @@ This is a requirement map, not a passing score. The current Drive EPUB cleanup s
 | --- | --- | --- |
 | Detect EPUB/KEPUB, fixed/roll/reflow, encryption and structural risks | Partial read-only preflight, new and untested | Mixed-layout fixtures and independent validation |
 | Preserve vs reconstruct vs mixed strategy | Flags evidence; cannot yet reconstruct existing EPUBs | Real poorly converted books with original-text comparisons |
-| Navigation/TOC/footnotes/spine repair | Partial read-only XHTML/NCX broken-link, fragment and duplicate-ID audit; repair not yet implemented | Working cross-book links, NCX/nav repair and reader checks |
+| Navigation/TOC/footnotes/spine repair | Reviewable EPUB2 NCX generation only when every linear spine item has a reliable XHTML heading; read-only broken-link and duplicate-ID audit | EPUBCheck, reader render, hierarchical TOC/EPUB3 nav, footnote and complex-source repair |
 | CSS/reflow and typography | Narrow CSS repair; opt-in Libron backend in draft | E-reader render, dark mode, all font styles, glyph coverage |
 | Watermark/OCR/conversion artifact removal | Source-preserving removal of clearly unreferenced OS ZIP debris only; watermarks/OCR/content cleanup not implemented | Proven author-content preservation and explicit repair scope |
 | Metadata, privacy and covers | Partial metadata editing and cover proposals | Real bookstore/Calibre checks; source provenance |
@@ -27,7 +27,7 @@ Do not call a book clean merely because it passed archive inspection or its meta
 ## Current development-branch evidence (not a release)
 
 - Proposed OS debris removal is integrated with ChangeSession, undo/redo and selective archive verification. Retained files are compared byte-for-byte, with bounded streaming in the new cleanup layer; this does not fix the larger EpubSource whole-book memory model.
-- Preflight checks broken local links and anchors, duplicate XHTML IDs and unverified XML bases, without rewriting reader navigation. It distinguishes standard IDPF font obfuscation from unknown encryption and refuses edits to signed EPUBs.
+- Preflight checks broken local links and anchors, duplicate XHTML IDs and unverified XML bases. A separate strict EPUB2-only NCX generator attaches a missing navigation document from trusted XHTML headings without changing chapter bytes. It distinguishes standard IDPF font obfuscation from unknown encryption and refuses edits to signed EPUBs.
 - Regression tests were added for these cases, but a full Python test run, EPUBCheck, a real Libron ZIP, Windows packaging and reader rendering have **not** been executed in the current development session. The work remains DRAFT.
 
 ## Required gates still open

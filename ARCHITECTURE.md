@@ -12,7 +12,7 @@ Queue state and final output files are deliberately separate. A queue record is 
 
 ## Conservative deterministic EPUB repair
 
-`hygiene.removable_entries` proposes removal of unreferenced OS archive debris only; `remove_os_debris` streams retained payloads and verifies their byte identity before handoff. `ChangeSession` owns approval/undo and the digest-bound candidate. `links.audit_internal_links` reports (but does not guess repairs for) broken local references and anchors. `protection.is_font_obfuscation_only` distinguishes legitimate IDPF font obfuscation from unsupported encryption. Signed EPUB edits are refused, and no-op sessions return the untouched source bytes. These are early, narrow components rather than a complete EPUB cleanup or reader validation engine.
+`hygiene.removable_entries` proposes removal of unreferenced OS archive debris only; `remove_os_debris` streams retained payloads and verifies their byte identity before handoff. `ChangeSession` owns approval/undo and the digest-bound candidate. `links.audit_internal_links` reports (but does not guess repairs for) broken local references and anchors. `navigation.propose_ncx` and `navigation.apply_ncx` create an explicitly reviewable EPUB2 NCX solely from reliable linear-spine XHTML headings, preserving every chapter and existing spine order; ambiguous layouts and EPUB3 are excluded. `protection.is_font_obfuscation_only` distinguishes legitimate IDPF font obfuscation from unsupported encryption. Signed EPUB edits are refused, and no-op sessions return the untouched source bytes. These are early, narrow components rather than a complete EPUB cleanup or reader validation engine.
 
 ## Windows UI
 
