@@ -133,7 +133,7 @@ def inspect_epub(path: str | Path) -> Preflight:
                 continue
             paragraphs = [" ".join("".join(n.itertext()).split())
                           for n in root.iter()
-                          if etree.QName(n).localname == "p"]
+                          if isinstance(n.tag, str) and etree.QName(n).localname == "p"]
             lengths = [len(p) for p in paragraphs if p]
             if len(lengths) >= 30 and median(lengths) < 65:
                 suspicious += 1
