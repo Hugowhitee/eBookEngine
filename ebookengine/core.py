@@ -314,6 +314,11 @@ class EpubSource:
                             "Retailer placeholder detected; original cover found",True))
             except (ImportError,FileNotFoundError,ValueError,OSError):
                 pass
+        from .hygiene import removable_entries
+        junk = removable_entries(self)
+        if junk:
+            changes.append(Change("archive_hygiene", str(len(junk)) + " files",
+                                  "remove OS debris", "Unreferenced operating-system files", True))
         return changes
 
     def create(self, edits: dict[str,str], *, extra_css: bool=False) -> bytes:
@@ -392,7 +397,7 @@ class EpubSource:
         self.verify(candidate, modified)
         return candidate
 
-    def verify(self, candidate: bytes, allowed_modified: dict[str, bytes]|None=None):
+    def verify(self, candidate: bytes, allowed_modified: dict[str, bytes]|None=None, *, allowed_removed=()):
         with ZipFile(BytesIO(candidate)) as z:
             verify_archive(z)
             first = z.infolist()[0]
@@ -401,15 +406,16 @@ class EpubSource:
             if z.read("mimetype") != b"application/epub+zip":
                 raise DocumentError("Ongeldige EPUB-mimetype")
             changed = set((allowed_modified or {}).keys())
+            removed = set(allowed_removed)
             for path, sha in self._fingerprint.items():
-                if path not in changed and hashlib.sha256(z.read(path)).digest() != sha:
+                if path not in changed and path not in removed and hashlib.sha256(z.read(path)).digest() != sha:
                     raise DocumentError(f"Inhoud gewijzigd zonder toestemming: {path}")
             opf = _xml(z.read(self.opf_path))
             ids = {x.get("id"):x for x in opf.xpath(".//opf:manifest/opf:item", namespaces=NS)}
             spine = [x.get("idref") for x in opf.xpath(".//opf:spine/opf:itemref", namespaces=NS)]
             if spine != self.spine or set(ids) != set(self.items):
                 raise DocumentError("Leesvolgorde of manifest onverwacht veranderd")
-            if set(z.namelist()) != set(ZipFile(BytesIO(self.raw)).namelist()):
+            if set(z.namelist()) != set(ZipFile(BytesIO(self.raw)).namelist()) - removed:
                 raise DocumentError("EPUB verliest een origineel bestand")
             for x in ids.values():
                 if _join(self.base, x.get("href") or "") not in z.namelist():
@@ -491,9 +497,12 @@ class ChangeSession:
 
     def build(self):
         changes = {c.field:c.after for c in self.changes.values()
-                   if c.enabled and c.field != "typography"}
+                   if c.enabled and c.field not in ("typography", "archive_hygiene")}
         self._candidate_digest = None
         candidate = self.source.create(changes, extra_css=self.extra_css)
+        if self.changes.get("archive_hygiene") and self.changes["archive_hygiene"].enabled:
+            from .hygiene import removable_entries, remove_os_debris
+            candidate = remove_os_debris(self.source, candidate, removable_entries(self.source))
         if self.changes.get("typography") and self.changes["typography"].enabled:
             if self._libron_fonts is None:
                 raise DocumentError("Missing Libron font package")
@@ -522,7 +531,11 @@ class ChangeSession:
             for ident,item in self.source.items.items():
                 if item.get('media-type') == 'text/css':
                     allowed[self.source.paths[ident]] = b''
-        return self.source.verify(candidate, allowed_modified=allowed)
+        removed = ()
+        if self.changes.get("archive_hygiene") and self.changes["archive_hygiene"].enabled:
+            from .hygiene import removable_entries
+            removed = removable_entries(self.source)
+        return self.source.verify(candidate, allowed_modified=allowed, allowed_removed=removed)
 
 
 def atomic_save(target: str | Path, content: bytes, *, original: str | Path):
