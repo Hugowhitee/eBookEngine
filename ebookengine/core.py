@@ -499,6 +499,17 @@ class ChangeSession:
         changes = {c.field:c.after for c in self.changes.values()
                    if c.enabled and c.field not in ("typography", "archive_hygiene")}
         self._candidate_digest = None
+        has_changes = any(c.enabled for c in self.changes.values()) or self.extra_css
+        if not has_changes:
+            # No-op books retain original bytes without a redundant ZIP rewrite.
+            self.candidate = self.source.raw
+            self._candidate_digest = hashlib.sha256(self.candidate).digest()
+            return self.candidate
+        with ZipFile(BytesIO(self.source.raw)) as check:
+            if "META-INF/signatures.xml" in check.namelist():
+                raise DocumentError("EPUB has digital signatures; editing would invalidate them")
+            if "META-INF/encryption.xml" in check.namelist():
+                raise DocumentError("Encrypted EPUB requires dedicated safe handling")
         candidate = self.source.create(changes, extra_css=self.extra_css)
         if self.changes.get("archive_hygiene") and self.changes["archive_hygiene"].enabled:
             from .hygiene import removable_entries, remove_os_debris
