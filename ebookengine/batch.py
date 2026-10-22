@@ -152,6 +152,22 @@ class BatchQueue:
         job.status = "cancelled"
         self._save()
 
+    def retry(self, job_id: str) -> BookJob:
+        """Reinspect an errored book, never silently replay its last export."""
+        job = self.get(job_id)
+        if job.status != "error":
+            raise DocumentError("Only failed items can be retried")
+        job.status = "queued"
+        job.error = None
+        job.source_hash = None
+        job.findings = []
+        job.workflow = ""
+        job.edits = {}
+        job.libron_zip = None
+        job.output = None
+        self._save()
+        return job
+
     def reorder(self, ordered_ids: list[str]):
         if len(ordered_ids) != len(self.jobs) or set(ordered_ids) != {j.id for j in self.jobs}:
             raise DocumentError("Order must include every queue item once")
