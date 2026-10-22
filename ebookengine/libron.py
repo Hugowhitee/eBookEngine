@@ -104,7 +104,9 @@ def embed_libron(source, candidate: bytes, fonts: dict[str, bytes],
         verify_archive(archive)
         original = _LazyArchive(archive)
         if "META-INF/encryption.xml" in original:
-            raise DocumentError("Font embedding unavailable for encrypted EPUB")
+            from .protection import is_font_obfuscation_only
+            if not is_font_obfuscation_only(source):
+                raise DocumentError("Font embedding unavailable for encrypted EPUB")
         opf = _parse_xml(original[source.opf_path])
         metadata = opf.find(f"{{{EPUB_NS}}}metadata")
         if metadata is None:
@@ -130,9 +132,10 @@ def embed_libron(source, candidate: bytes, fonts: dict[str, bytes],
             raise DocumentError("Libron manifest identifiers already exist")
 
         altered = {}
+        font_type = "font/ttf" if opf.get("version", "2.0").startswith("3") else "application/vnd.ms-opentype"
         for style in STYLES:
             etree.SubElement(manifest, f"{{{EPUB_NS}}}item", id="ebookengine-libron-" + style.lower(),
-                             href="fonts/" + FONTS[style], **{"media-type": "application/vnd.ms-opentype"})
+                             href="fonts/" + FONTS[style], **{"media-type": font_type})
         etree.SubElement(manifest, f"{{{EPUB_NS}}}item", id="ebookengine-libron-style",
                          href="styles/ebookengine-libron.css", **{"media-type": "text/css"})
         if opf.get("version", "2.0").startswith("3"):
@@ -160,7 +163,7 @@ def embed_libron(source, candidate: bytes, fonts: dict[str, bytes],
                 raise DocumentError(f"Unsupported XHTML root: {path}")
             ns = etree.QName(html).namespace
             tag = (lambda value: f"{{{ns}}}{value}" if ns else value)
-            head = next((el for el in html if etree.QName(el).localname == "head"), None)
+            head = next((el for el in html if isinstance(el.tag, str) and etree.QName(el).localname == "head"), None)
             if head is None:
                 head = etree.Element(tag("head"))
                 html.insert(0, head)
