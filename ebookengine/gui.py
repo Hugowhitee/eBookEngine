@@ -98,8 +98,6 @@ class App(tk.Tk):
         menu=tk.Menu(self.tools_btn,tearoff=False)
         menu.add_command(label='Local OCR / AI setup…',command=self.setup_engines)
         menu.add_command(label='Suggest description with AI…',command=self.suggest_description)
-        menu.add_separator()
-        menu.add_command(label='Embed Libron font from ZIP…',command=self.import_libron)
         self.tools_btn.configure(menu=menu);self.tools_btn.pack(side='right')
         self.info_var=tk.StringVar(value='PDF, EPUB and KEPUB-EPUB are supported.')
         ttk.Label(self,textvariable=self.info_var,padding=(14,5,10,8)).pack(fill='x')
@@ -507,32 +505,6 @@ class App(tk.Tk):
             out=atomic_save(name,self.candidate,original=self.path)
             self.status.set(f'Saved and verified: {out.name}')
         except Exception as exc:messagebox.showerror('Export failed',str(exc))
-
-    def import_libron(self):
-        if self.running:
-            return
-        if not self.session or self.kind != 'EPUB':
-            messagebox.showinfo('Libron font', 'Open an EPUB first.')
-            return
-        path = filedialog.askopenfilename(
-            title='Choose the official Libron.zip (four TTF styles)',
-            filetypes=[('Libron ZIP','*.zip')]
-        )
-        if not path:
-            return
-        try:
-            self.session.set_libron_zip(path)
-            self.candidate=None
-            self.result_kind=None
-            self._fill_changes()
-            self._render()
-            self.details_note.config(
-                text='Libron is included on export. This plain-text preview does not simulate ebook reader fonts.'
-            )
-            self.status.set('Libron ready. Press Improve to build and validate the EPUB.')
-        except Exception as exc:
-            messagebox.showerror('Cannot import Libron', str(exc))
-        self._refresh_controls()
 
     def setup_engines(self):
         dialog=tk.Toplevel(self);dialog.title('Local engines');dialog.resizable(False,False)
