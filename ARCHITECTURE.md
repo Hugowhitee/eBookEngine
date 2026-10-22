@@ -4,6 +4,12 @@
 
 `EpubSource` loads immutable ZIP bytes, validates OCF, manifest/spine, media and path safety. `ChangeSession` holds typed proposals and snapshot-based Undo/Redo, reconstructing every candidate from the original. `core.atomic_save` protects original files and writes atomically. PDFium renders source pages. `pdf_engine.searchable_pdf` layers invisible selectable Tesseract text on missing-text PDF pages without repainting source page graphics, then reopens and verifies the output. `conversion` builds reflowable EPUB from structured Docling HTML while carrying a visual page-reference appendix. `local_ai` proposes description text only on explicit request. Its output is never silently applied.
 
+## EPUB analysis and batch boundaries
+
+`preflight.inspect_epub` is a read-only, conservative classification step. It reports suspected conversion artifacts and layout risks but never edits author content. `batch.BatchQueue` owns durable per-book status, order, explicit review approval, source-fingerprint checks and sequential execution; it is not a second document/cleanup engine. `EpubSource` and `ChangeSession` remain owners of actual EPUB candidate creation and validation. Libron is an opt-in stylesheet/font transformation through the existing change session. The current implementation is only a foundation; broad skill-parity reconstruction is not implemented.
+
+Queue state and final output files are deliberately separate. A queue record is not an ebook library; job state persists in one atomic JSON snapshot, with interrupted running work returned to review rather than silently retried. A future UI must bind to these same states instead of keeping its own duplicate queue. Multiple independent app processes cannot safely mutate the same JSON store yet.
+
 ## Windows UI
 
 The actual implementation uses Python 3.12 `tkinter/ttk` for native system buttons and fewer moving parts; the earlier PySide6 choice was provisional. One document-first main window, split source/result viewer, context-specific output selector, TOC/page navigation, editable EPUB cover/metadata, change toggle and Undo/Redo, worker progress/cancel, Save as. EPUB text preview is sanitized and does **not** claim identical pagination/rendering to a Kobo/Calibre renderer. Windows onedir distribution bundles Python, PDFium and Tesseract. No forced login or cloud conversion.
