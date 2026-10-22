@@ -52,6 +52,7 @@ def test_multiple_books_are_durable_and_explicitly_approved(tmp_path):
 
     assert queue.inspect_next().status == "needs_review"
     assert queue.inspect_next().status == "needs_review"
+    assert isinstance(queue.jobs[0].proposals, list)
     assert queue.inspect_next() is None
     assert queue.run_next(tmp_path / "output") is None
     queue.approve(jobs[0].id, edits={"description": "Reviewed by user"})
@@ -184,6 +185,9 @@ def test_batch_does_not_apply_proposed_repairs_without_per_item_approval(tmp_pat
     followup = BatchQueue(tmp_path / "second-queue.json")
     new_job = followup.add([path])[0]
     followup.inspect_next()
+    assert any(p["field"] == "archive_hygiene" for p in followup.get(new_job.id).proposals)
+    assert any(p["field"] == "archive_hygiene"
+               for p in BatchQueue(tmp_path / "second-queue.json").get(new_job.id).proposals)
     followup.approve(new_job.id, approved_proposals=["archive_hygiene"])
     saved = followup.run_next(tmp_path / "out")
     assert saved.status == "done"

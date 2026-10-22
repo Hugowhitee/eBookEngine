@@ -36,6 +36,7 @@ class Preflight:
     workflow: str
     findings: tuple[Finding, ...]
     requires_review: bool
+    proposals: tuple[dict, ...] = ()
     # No current preflight result authorizes automatic content rewriting.
     safe_to_auto_reconstruct: bool = False
 
@@ -170,6 +171,8 @@ def inspect_epub(path: str | Path) -> Preflight:
     ) else "preserve"
     if fixed or roll:
         workflow = "special-layout-review"
+    suggested = tuple(asdict(change) for change in source.propose())
     return Preflight(str(source.path), source.title, version, layout, workflow,
                      tuple(evidence), blocked or workflow != "preserve" or any(
-                         x.severity == "review" for x in evidence))
+                         x.severity == "review" for x in evidence),
+                     suggested)

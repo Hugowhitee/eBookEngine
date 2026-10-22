@@ -33,6 +33,7 @@ class BookJob:
     format: str = "EPUB"
     title: str = ""
     findings: list[dict] = field(default_factory=list)
+    proposals: list[dict] = field(default_factory=list)
     workflow: str = ""
     edits: dict[str, str] = field(default_factory=dict)
     approved_proposals: list[str] = field(default_factory=list)
@@ -126,6 +127,7 @@ class BatchQueue:
                 raise DocumentError("Source changed during inspection; retry preflight")
             job.source_hash = ending_hash
             job.findings = [asdict(item) for item in report.findings]
+            job.proposals = list(report.proposals)
             job.workflow = report.workflow
             job.title = report.title
             job.status = "needs_review"
@@ -150,7 +152,7 @@ class BatchQueue:
         proposed = list(approved_proposals or [])
         if len(proposed) != len(set(proposed)):
             raise DocumentError("Duplicate proposal approval")
-        available = set(ChangeSession(EpubSource(job.source)).changes)
+        available = {change["field"] for change in job.proposals}
         if set(proposed) - available:
             raise DocumentError("Unknown proposed changes; reinspect this book")
         job.edits = changes
@@ -177,6 +179,7 @@ class BatchQueue:
         job.error = None
         job.source_hash = None
         job.findings = []
+        job.proposals = []
         job.workflow = ""
         job.edits = {}
         job.approved_proposals = []
@@ -208,8 +211,11 @@ class BatchQueue:
             if sha256(source.raw).hexdigest() != job.source_hash:
                 raise DocumentError("Source changed while loading; inspect again")
             session = ChangeSession(source)
-            if set(job.approved_proposals) - set(session.changes):
-                raise DocumentError("Approved proposal no longer matches the source")
+            stored = {change["field"]: change["after"] for change in job.proposals}
+            if (set(job.approved_proposals) - set(session.changes)
+                    or any(session.changes[key].after != stored.get(key)
+                           for key in job.approved_proposals)):
+                raise DocumentError("Approved proposal no longer matches the reviewed change")
             for key in tuple(session.changes):
                 if key not in job.approved_proposals:
                     session.toggle(key)
