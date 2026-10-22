@@ -38,6 +38,8 @@ def is_font_obfuscation_only(source) -> bool:
                                        no_network=True, recover=False)
             )
             entries = root.xpath('//*[local-name()="EncryptedData"]')
+            if root.xpath('//*[local-name()="EncryptedKey"]'):
+                return False
             if not entries:
                 return False
             for entry in entries:
