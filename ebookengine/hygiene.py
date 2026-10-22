@@ -104,7 +104,12 @@ def remove_os_debris(source, candidate: bytes, selected: tuple[str, ...]) -> byt
                     continue
                 output_info = copy(info)
                 if info.filename == "mimetype":
+                    # OCF needs the first mimetype entry uncompressed, without
+                    # streaming data-descriptor flags.
                     output_info.compress_type = ZIP_STORED
+                    destination.writestr(output_info, original.read(info.filename),
+                                         compress_type=ZIP_STORED)
+                    continue
                 if info.is_dir():
                     destination.writestr(output_info, b"")
                     continue
