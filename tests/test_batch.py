@@ -117,3 +117,12 @@ def test_queue_rejects_unreviewed_actions(tmp_path):
     with pytest.raises(DocumentError):
         q.approve(j.id, edits={"made_up_field": "value"})
     assert not q.get(j.id).output
+
+
+def test_add_is_atomic_when_later_input_is_invalid(tmp_path):
+    book = fixture_book(tmp_path)
+    q = BatchQueue(tmp_path / "queue.json")
+    with pytest.raises(FileNotFoundError):
+        q.add([book, tmp_path / "missing.epub"])
+    assert not q.jobs
+    assert not (tmp_path / "queue.json").exists()
